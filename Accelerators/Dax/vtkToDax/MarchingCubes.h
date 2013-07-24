@@ -30,6 +30,8 @@
 #include <dax/cont/GenerateInterpolatedCells.h>
 #include <dax/worklet/MarchingCubes.h>
 
+#include <dax/cont/Timer.h>
+
 namespace
 {
 template <typename T> struct MarchingCubesOuputType
@@ -94,6 +96,19 @@ namespace vtkToDax
         ClassifyResultType classification; // array handle for the
                                            // first step
                                            // (classification)
+
+        ///{ Timing by Jimmy
+        dax::cont::Timer<> timer1;
+        inGrid.GetPointCoordinates().PrepareForInput();
+        std::cout << "DoMarchingCubes: inGrid.PointCoordinates host->dev: " << timer1.GetElapsedTime() << std::endl;
+
+        timer1.Reset();
+        mcHandle.PrepareForInput();
+        std::cout << "DoMarchingCubes: mcHandle.CellConnections host->dev: " << timer1.GetElapsedTime() << std::endl;
+
+        ///} Timing
+
+
         scheduler.Invoke(classifyWorklet,
                          inGrid,
                          mcHandle,
@@ -108,6 +123,17 @@ namespace vtkToDax
                          inGrid,
                          outGeom,
                          mcHandle);
+
+        ///{ Timing by Jimmy
+        timer1.Reset();
+        outGeom.GetPointCoordinates().GetPortalConstControl();
+        std::cout << "DoMarchingCubes: outGeom.Point dev->host: " << timer1.GetElapsedTime() << std::endl;
+
+        timer1.Reset();
+        outGeom.GetCellConnections().GetPortalConstControl();
+        std::cout << "DoMarchingCubes: outGeom.Cell dev->host: " << timer1.GetElapsedTime() << std::endl;
+        ///} Timing
+
         }
       catch(dax::cont::ErrorControlOutOfMemory error)
         {
@@ -173,18 +199,26 @@ namespace vtkToDax
                  vtkToDax::vtkTopologyContainerTag<VTKCellType>,
                  vtkToDax::vtkPointsContainerTag > resultGrid;
 
+      std::cout << "call vtkToDax::dataSetConverter " << endl;
+
       InputDataSetType inputDaxData = vtkToDax::dataSetConverter(&dataSet,
                                                      DataSetTypeToTypeStruct());
+      std::cout << "finished vtkToDax::dataSetConverter "<<  endl;
 
       vtkToDax::DoMarchingCubes<DataSetTypeToTypeStruct::Valid> mc;
+      std::cout << "start mc()" << std::endl;
       int result = mc(inputDaxData,
                        resultGrid,
                        this->Value,
                        this->Field);
+
+      std::cout << "result = " << result << std::endl;
       if(result==1 && resultGrid.GetNumberOfCells() > 0)
         {
         daxToVtk::dataSetConverter(resultGrid,this->Result);
         }
+
+      std::cout << "return" << std::endl;
 
       return result;
       }
