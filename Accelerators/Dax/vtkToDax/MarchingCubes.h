@@ -17,17 +17,20 @@
 #ifndef vtkToDax_MarchingCubes_h
 #define vtkToDax_MarchingCubes_h
 
-#include "vtkPolyData.h"
+#include <vtkPolyData.h>
 
 #include "DataSetTypeToType.h"
 #include "CellTypeToType.h"
 #include "DataSetConverters.h"
-#include "daxToVtk/CellTypeToType.h"
-#include "daxToVtk/DataSetConverters.h"
+
+#include <daxToVtk/CellTypeToType.h>
+#include <daxToVtk/DataSetConverters.h>
 
 #include <dax/cont/Scheduler.h>
 #include <dax/cont/GenerateInterpolatedCells.h>
 #include <dax/worklet/MarchingCubes.h>
+
+#include <dax/cont/Timer.h>
 
 namespace
 {
@@ -93,6 +96,22 @@ namespace vtkToDax
         ClassifyResultType classification; // array handle for the
                                            // first step
                                            // (classification)
+
+        ///{ Timing by Jimmy
+        double total_tx_time = 0;
+        dax::cont::Timer<> timer1;
+        inGrid.GetPointCoordinates().PrepareForInput();
+        total_tx_time += timer1.GetElapsedTime();
+        std::cout << "DoMarchingCubes: inGrid.PointCoordinates host->dev: " << timer1.GetElapsedTime() << std::endl;
+
+        timer1.Reset();
+        mcHandle.PrepareForInput();
+        total_tx_time += timer1.GetElapsedTime();
+        std::cout << "DoMarchingCubes: mcHandle host->dev: " << timer1.GetElapsedTime() << std::endl;
+
+        ///} Timing
+
+
         scheduler.Invoke(classifyWorklet,
                          inGrid,
                          mcHandle,
@@ -107,6 +126,19 @@ namespace vtkToDax
                          inGrid,
                          outGeom,
                          mcHandle);
+
+        ///{ Timing by Jimmy
+        timer1.Reset();
+        outGeom.GetPointCoordinates().GetPortalConstControl();
+        total_tx_time += timer1.GetElapsedTime();
+        std::cout << "DoMarchingCubes: outGeom.Point dev->host: " << timer1.GetElapsedTime() << std::endl;
+
+        timer1.Reset();
+        outGeom.GetCellConnections().GetPortalConstControl();
+        total_tx_time += timer1.GetElapsedTime();
+        std::cout << "DoMarchingCubes: outGeom.Cell dev->host: " << timer1.GetElapsedTime() << std::endl << "DoMarchingCubes total tx time: " << total_tx_time << endl;
+        ///} Timing
+
         }
       catch(dax::cont::ErrorControlOutOfMemory error)
         {
@@ -180,6 +212,7 @@ namespace vtkToDax
                        resultGrid,
                        this->Value,
                        this->Field);
+
       if(result==1 && resultGrid.GetNumberOfCells() > 0)
         {
         daxToVtk::dataSetConverter(resultGrid,this->Result);
